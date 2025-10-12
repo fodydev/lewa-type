@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LEWA Typing Test</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Afrim Input -->
+    <script src="https://cdn.jsdelivr.net/npm/afrim-input@latest/dist/afrim_input.js"></script>
+
+    <style>
+        body {
+            background-color: #f8fafc;
+            color: #1f2937;
+            font-family: 'Inter', sans-serif;
+        }
+
+        textarea {
+            resize: none;
+            border: none;
+            outline: none;
+            background: transparent;
+            width: 100%;
+        }
+
+        .metric-card {
+            background-color: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 1rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .metric-icon {
+            width: 3rem;
+            height: 3rem;
+            margin: 0 auto 0.75rem;
+            border-radius: 50%;
+            background-color: #eef2ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #result-card {
+            transition: opacity 0.5s ease, transform 0.4s ease;
+        }
+
+        #result-card.hidden {
+            opacity: 0;
+            transform: translateY(20px);
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body class="d-flex flex-column min-vh-100">
+
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg bg-white border-bottom shadow-sm py-3">
+        <div class="container">
+            <div class="d-flex align-items-center gap-3">
+                <div class="bg-light rounded-3 d-flex align-items-center justify-content-center"
+                    style="width:40px;height:40px;">
+                    <i data-lucide="keyboard" class="text-primary"></i>
+                </div>
+                <div>
+                    <h1 class="h5 mb-0 fw-semibold">LEWA</h1>
+                    <small class="text-muted">African Language Typing</small>
+                </div>
+            </div>
+
+            <!-- Navbar Dropdown -->
+            <div class="d-flex align-items-center gap-3">
+                <select id="language" class="form-select form-select-sm">
+                    {% for code, name in languages.items() %}
+                    <option value="{{ code }}" {% if selected_lang==code %}selected{% endif %}>
+                        {{ name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+        </div>
+    </nav>
+
+    <!-- Main -->
+    <main class="flex-grow-1 container py-5">
+        <div class="text-center mb-5">
+            <h2 class="fw-bold display-6">Test Your Typing Speed</h2>
+            <p class="text-muted fs-5">Practice typing in your selected African language</p>
+        </div>
+
+        <!-- Target Text -->
+        <div class="bg-light border rounded-4 p-4 mb-4">
+            <p class="text-muted small mb-2">Type this:</p>
+            <p id="target-text" class="font-monospace fs-5 text-dark"></p>
+        </div>
+
+        <!-- Typing Area -->
+        <div class="bg-white border rounded-4 p-4 position-relative mb-4">
+            <div id="download-status" hidden class="text-primary small mb-2">Loading Afrim Input...</div>
+            <textarea id="textfield" rows="6" class="font-monospace fs-6"
+                placeholder="Start typing to begin the test..." disabled></textarea>
+            <div id="tooltip" class="position-absolute bg-white border rounded shadow-sm p-2 small d-none">
+                <div id="tooltip-input" class="fw-medium mb-1"></div>
+                <div id="tooltip-predicates"></div>
+            </div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="row g-3 mb-5">
+            <div class="col-md-6">
+                <div class="metric-card">
+                    <div class="metric-icon">
+                        <i data-lucide="zap" class="text-primary"></i>
+                    </div>
+                    <div id="wpm" class="fs-2 fw-bold">0</div>
+                    <p class="text-muted small mb-0">Words Per Minute</p>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="metric-card">
+                    <div class="metric-icon">
+                        <i data-lucide="target" class="text-primary"></i>
+                    </div>
+                    <div id="accuracy" class="fs-2 fw-bold">100%</div>
+                    <p class="text-muted small mb-0">Accuracy</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Result Card -->
+        <div id="result-card" class="hidden text-center bg-white border rounded-4 p-4 shadow-sm">
+            <h3 class="fw-bold mb-2">Test Complete!</h3>
+            <p class="text-muted mb-4">Here are your results:</p>
+            <div class="d-flex justify-content-center gap-5 mb-4">
+                <div>
+                    <p class="small text-muted mb-1">WPM</p>
+                    <p id="final-wpm" class="fs-3 fw-bold text-primary mb-0">0</p>
+                </div>
+                <div>
+                    <p class="small text-muted mb-1">Accuracy</p>
+                    <p id="final-accuracy" class="fs-3 fw-bold text-success mb-0">0%</p>
+                </div>
+            </div>
+            <button id="restart-btn" class="btn btn-primary px-4 py-2">Try Again</button>
+        </div>
+
+        <!-- Start Button -->
+        <div class="text-center mt-4">
+            <button id="start-btn" class="btn btn-primary px-5 py-2">Start Test</button>
+        </div>
+    </main>
+
+    <footer class="border-top text-center py-4 text-muted small">
+        © LEWA 2025
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        lucide.createIcons();
+
+        const AFRICAN_WORDS = {
+            am: ["ሰላም", "እንደምን", "እባክህ", "ጓደኛ", "ቤት", "ምግብ", "ውሃ", "መጽሐፍ"],
+            bax: ["ɓa", "njə", "sə", "ŋgɔ", "lɛ", "ndə", "yà", "ŋka"],
+            ewo: ["ndə", "mɛ", "lɔ́", "sɔ", "bɛ́", "nda", "bɔ́", "ngwɛ́"],
+            fmp: ["m̀bʉ̀", "tsə́", "ŋgá", "shwì", "mbwɔ́", "ndzə̀", "yɔ́", "ŋwə́"],
+            gez: ["ሰላም", "ልብ", "ቤት", "እምነት", "ሰማይ", "መልእክት", "ሰው", "ጽድቅ"]
+        };
+
+        document.getElementById("language").addEventListener("change", (e) => {
+            const selectedLang = e.target.value;
+            window.location.href = `/?lang=${selectedLang}`;
+        });
+
+        let selectedLang = "{{ selected_lang }}";
+        let isRunning = false;
+        let correctChars = 0;
+        let totalChars = 0;
+        let startTime = null;
+
+        const targetEl = document.getElementById("target-text");
+        const textarea = document.getElementById("textfield");
+        const startBtn = document.getElementById("start-btn");
+        const wpmDisplay = document.getElementById("wpm");
+        const accuracyDisplay = document.getElementById("accuracy");
+        const resultCard = document.getElementById("result-card");
+        const finalWpm = document.getElementById("final-wpm");
+        const finalAccuracy = document.getElementById("final-accuracy");
+        const restartBtn = document.getElementById("restart-btn");
+
+        function generateText() {
+            const words = AFRICAN_WORDS[selectedLang];
+            const shuffled = [...words].sort(() => Math.random() - 0.5);
+            const sentence = shuffled.slice(0, 10).join(" ");
+            targetEl.innerHTML = sentence
+                .split("")
+                .map(ch => `<span>${ch}</span>`)
+                .join("");
+            return sentence;
+        }
+
+        let targetText = generateText();
+
+        function startTyping() {
+            if (isRunning) return;
+            isRunning = true;
+            startBtn.disabled = true;
+            textarea.disabled = false;
+            textarea.value = "";
+            textarea.focus();
+            correctChars = 0;
+            totalChars = 0;
+            startTime = new Date();
+            resultCard.classList.add("hidden");
+        }
+
+        function stopTest() {
+            isRunning = false;
+            textarea.disabled = true;
+            startBtn.disabled = false;
+
+            const elapsed = (new Date() - startTime) / 1000 / 60;
+            const words = textarea.value.trim().split(/\s+/).length;
+            const wpm = elapsed > 0 ? Math.round(words / elapsed) : 0;
+            const accuracy = totalChars > 0 ? Math.round((correctChars / totalChars) * 100) : 100;
+
+            finalWpm.textContent = wpm;
+            finalAccuracy.textContent = `${accuracy}%`;
+            resultCard.classList.remove("hidden");
+        }
+
+        textarea.addEventListener("input", (e) => {
+            if (!isRunning && e.target.value.trim().length > 0) startTyping();
+
+            const value = e.target.value;
+            totalChars = value.length;
+            const spans = targetEl.querySelectorAll("span");
+
+            correctChars = 0;
+            spans.forEach((span, i) => {
+                const typedChar = value[i];
+                if (typedChar == null) {
+                    span.className = "";
+                } else if (typedChar === span.textContent) {
+                    span.className = "text-success";
+                    correctChars++;
+                } else {
+                    span.className = "text-danger";
+                }
+            });
+
+            if (value.length >= targetText.length) stopTest();
+
+            const elapsed = (new Date() - startTime) / 1000 / 60;
+            const words = value.trim().split(/\s+/).length;
+            const wpm = elapsed > 0 ? Math.round(words / elapsed) : 0;
+            const accuracy = totalChars > 0 ? Math.round((correctChars / totalChars) * 100) : 100;
+
+            accuracyDisplay.textContent = `${accuracy}%`;
+            wpmDisplay.textContent = wpm;
+        });
+
+        startBtn.addEventListener("click", () => {
+            targetText = generateText();
+            accuracyDisplay.textContent = "100%";
+            wpmDisplay.textContent = "0";
+            startTyping();
+        });
+
+        restartBtn.addEventListener("click", () => {
+            targetText = generateText();
+            resultCard.classList.add("hidden");
+            accuracyDisplay.textContent = "100%";
+            wpmDisplay.textContent = "0";
+            textarea.value = "";
+            textarea.disabled = false;
+            textarea.focus();
+            startTyping();
+        });
+
+        document.getElementById("language").addEventListener("change", (e) => {
+            selectedLang = e.target.value;
+            targetText = generateText();
+        });
+
+        document.addEventListener("DOMContentLoaded", () => {
+            try {
+                const af = new AfrimInput({
+                    textFieldElementID: "textfield",
+                    downloadStatusElementID: "download-status",
+                    tooltipElementID: "tooltip",
+                    tooltipInputElementID: "tooltip-input",
+                    tooltipPredicatesElementID: "tooltip-predicates",
+                    configUrl: "https://raw.githubusercontent.com/fodydev/afrim-data/4b177197bb37c9742cd90627b1ad543c32ec791b/{{ selected_lang }}/{{ selected_lang }}.toml",
+                });
+                console.log("Afrim Input initialized successfully.", af);
+            } catch (err) {
+                console.error("Error initializing Afrim Input:", err);
+            }
+        });
+    </script>
+</body>
+
+</html>
