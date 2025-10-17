@@ -19,9 +19,7 @@ class User(UserMixin, db.Model):
     def check_password(self, raw_password: str) -> bool:
         return check_password_hash(self.password, raw_password)
 
-    # relationship to scores
     scores = db.relationship('Score', backref='user', lazy=True)
-
 
 @login_manager.user_loader
 def load_user(user_id):

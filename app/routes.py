@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, session, redirect, url_for, flash, make_response
 from app import db
 from app.models import User
-from flask_jwt_extended import create_access_token, unset_jwt_cookies
+from flask_jwt_extended import create_access_token, unset_jwt_cookies, set_access_cookies
 import secrets
 from app.models import Score, User
 from flask import jsonify
@@ -20,6 +20,12 @@ languages = {
 }
 
 
+def _generate_csrf_token():
+    token = secrets.token_urlsafe(24)
+    session['csrf_token'] = token
+    return token
+
+
 @bp.route('/')
 def home():
     lang = request.args.get("lang") or session.get("lang") or "gez"
@@ -27,13 +33,6 @@ def home():
     csrf = _generate_csrf_token()
     is_auth = bool(current_user.is_authenticated or session.get('user_id'))
     return render_template('home.html', languages=languages, selected_lang=lang, title='Home', csrf_token=csrf, is_authenticated=is_auth)
-
-
-def _generate_csrf_token():
-    token = secrets.token_urlsafe(24)
-    session['csrf_token'] = token
-    return token
-
 
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
@@ -43,9 +42,31 @@ def login():
 
     if request.method == 'GET':
         return render_template('login.html', csrf_token=_generate_csrf_token())
+    # POST: perform authentication
+    form = request.form or {}
+    csrf = form.get('csrf_token')
+    if not csrf or csrf != session.get('csrf_token'):
+        flash('Invalid CSRF token', 'danger')
+        return redirect(url_for('routes.login'))
 
-    flash('Login is not available here. Use the main login flow.', 'warning')
-    return redirect(url_for('routes.login'))
+    identifier = form.get('identifier', '').strip()
+    password = form.get('password', '')
+    if not identifier or not password:
+        flash('Missing credentials', 'warning')
+        return redirect(url_for('routes.login'))
+
+    user = User.query.filter(or_(User.username == identifier, User.email == identifier)).first()
+    if not user or not user.check_password(password):
+        flash('Invalid username or password', 'danger')
+        return redirect(url_for('routes.login'))
+
+    # login success
+    session['user_id'] = user.id
+    access_token = create_access_token(identity=str(user.id))
+    resp = make_response(redirect(url_for('routes.home')))
+    set_access_cookies(resp, access_token)
+    flash('Logged in', 'success')
+    return resp
 
 
 @bp.route('/signup', methods=['GET', 'POST'])
@@ -56,9 +77,38 @@ def signup():
 
     if request.method == 'GET':
         return render_template('signup.html', csrf_token=_generate_csrf_token())
+    # POST: create new user
+    form = request.form or {}
+    csrf = form.get('csrf_token')
+    if not csrf or csrf != session.get('csrf_token'):
+        flash('Invalid CSRF token', 'danger')
+        return redirect(url_for('routes.signup'))
 
-    flash('Signup is not available here. Use the main signup flow.', 'warning')
-    return redirect(url_for('routes.signup'))
+    username = form.get('username', '').strip()
+    email = form.get('email', '').strip().lower()
+    password = form.get('password', '')
+
+    if not username or not email or not password:
+        flash('All fields are required', 'warning')
+        return redirect(url_for('routes.signup'))
+
+    # check uniqueness
+    exists = User.query.filter((User.username == username) | (User.email == email)).first()
+    if exists:
+        flash('Username or email already exists', 'warning')
+        return redirect(url_for('routes.signup'))
+
+    user = User(username=username, email=email)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+
+    session['user_id'] = user.id
+    access_token = create_access_token(identity=str(user.id))
+    resp = make_response(redirect(url_for('routes.home')))
+    set_access_cookies(resp, access_token)
+    flash('Account created and logged in', 'success')
+    return resp
 
 
 @bp.route('/logout', methods=['POST'])
