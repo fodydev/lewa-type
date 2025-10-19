@@ -78,7 +78,7 @@
                 </div>
             </div>
 
-            <!-- Navbar Dropdown -->
+            <!-- Navbar Dropdown and Auth -->
             <div class="d-flex align-items-center gap-3">
                 <select id="language" class="form-select form-select-sm">
                     {% for code, name in languages.items() %}
@@ -87,6 +87,18 @@
                     </option>
                     {% endfor %}
                 </select>
+
+                {% if is_authenticated %}
+                <form method="post" action="{{ url_for('routes.logout') }}" class="m-0">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Logout</button>
+                </form>
+                {% else %}
+                <div class="d-flex">
+                    <a href="{{ url_for('routes.signup') }}" class="btn btn-sm btn-outline-primary">Register</a>
+                    <a href="{{ url_for('routes.login') }}" class="btn btn-sm btn-primary ms-2">Login</a>
+                </div>
+                {% endif %}
             </div>
 
         </div>
@@ -98,66 +110,91 @@
             <h2 class="fw-bold display-6">Test Your Typing Speed</h2>
             <p class="text-muted fs-5">Practice typing in your selected African language</p>
         </div>
+        <div class="row">
+            <div class="col-lg-9">
+                <!-- Target Text -->
+                <div class="bg-light border rounded-4 p-4 mb-4">
+                    <p class="text-muted small mb-2">Type this:</p>
+                    <p id="target-text" class="font-monospace fs-5 text-dark"></p>
+                </div>
 
-        <!-- Target Text -->
-        <div class="bg-light border rounded-4 p-4 mb-4">
-            <p class="text-muted small mb-2">Type this:</p>
-            <p id="target-text" class="font-monospace fs-5 text-dark"></p>
-        </div>
-
-        <!-- Typing Area -->
-        <div class="bg-white border rounded-4 p-4 position-relative mb-4">
-            <div id="download-status" hidden class="text-primary small mb-2">Loading Afrim Input...</div>
-            <textarea id="textfield" rows="6" class="font-monospace fs-6"
-                placeholder="Start typing to begin the test..." disabled></textarea>
-            <div id="tooltip" class="position-absolute bg-white border rounded shadow-sm p-2 small d-none">
-                <div id="tooltip-input" class="fw-medium mb-1"></div>
-                <div id="tooltip-predicates"></div>
-            </div>
-        </div>
-
-        <!-- Metrics -->
-        <div class="row g-3 mb-5">
-            <div class="col-md-6">
-                <div class="metric-card">
-                    <div class="metric-icon">
-                        <i data-lucide="zap" class="text-primary"></i>
+                <!-- Typing Area -->
+                <div class="bg-white border rounded-4 p-4 position-relative mb-4">
+                    <div id="download-status" hidden class="text-primary small mb-2">Loading Afrim Input...</div>
+                    <textarea id="textfield" rows="6" class="font-monospace fs-6"
+                        placeholder="Start typing to begin the test..." disabled></textarea>
+                    <div id="tooltip" class="position-absolute bg-white border rounded shadow-sm p-2 small d-none">
+                        <div id="tooltip-input" class="fw-medium mb-1"></div>
+                        <div id="tooltip-predicates"></div>
                     </div>
-                    <div id="wpm" class="fs-2 fw-bold">0</div>
-                    <p class="text-muted small mb-0">Words Per Minute</p>
                 </div>
-            </div>
-            <div class="col-md-6">
-                <div class="metric-card">
-                    <div class="metric-icon">
-                        <i data-lucide="target" class="text-primary"></i>
+
+                <!-- Metrics -->
+                <div class="row g-3 mb-5">
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <div class="metric-icon">
+                                <i data-lucide="zap" class="text-primary"></i>
+                            </div>
+                            <div id="wpm" class="fs-2 fw-bold">0</div>
+                            <p class="text-muted small mb-0">Words Per Minute</p>
+                        </div>
                     </div>
-                    <div id="accuracy" class="fs-2 fw-bold">100%</div>
-                    <p class="text-muted small mb-0">Accuracy</p>
+                    <div class="col-md-6">
+                        <div class="metric-card">
+                            <div class="metric-icon">
+                                <i data-lucide="target" class="text-primary"></i>
+                            </div>
+                            <div id="accuracy" class="fs-2 fw-bold">100%</div>
+                            <p class="text-muted small mb-0">Accuracy</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Result Card -->
+                <div id="result-card" class="hidden text-center bg-white border rounded-4 p-4 shadow-sm">
+                    <h3 class="fw-bold mb-2">Test Complete!</h3>
+                    <p class="text-muted mb-4">Here are your results:</p>
+                    <div class="d-flex justify-content-center gap-5 mb-4">
+                        <div>
+                            <p class="small text-muted mb-1">WPM</p>
+                            <p id="final-wpm" class="fs-3 fw-bold text-primary mb-0">0</p>
+                        </div>
+                        <div>
+                            <p class="small text-muted mb-1">Accuracy</p>
+                            <p id="final-accuracy" class="fs-3 fw-bold text-success mb-0">0%</p>
+                        </div>
+                    </div>
+                    <button id="restart-btn" class="btn btn-primary px-4 py-2">Try Again</button>
+                </div>
+
+                <!-- Start Button -->
+                <div class="text-center mt-4">
+                    <button id="start-btn" class="btn btn-primary px-5 py-2">Start Test</button>
                 </div>
             </div>
-        </div>
 
-        <!-- Result Card -->
-        <div id="result-card" class="hidden text-center bg-white border rounded-4 p-4 shadow-sm">
-            <h3 class="fw-bold mb-2">Test Complete!</h3>
-            <p class="text-muted mb-4">Here are your results:</p>
-            <div class="d-flex justify-content-center gap-5 mb-4">
-                <div>
-                    <p class="small text-muted mb-1">WPM</p>
-                    <p id="final-wpm" class="fs-3 fw-bold text-primary mb-0">0</p>
-                </div>
-                <div>
-                    <p class="small text-muted mb-1">Accuracy</p>
-                    <p id="final-accuracy" class="fs-3 fw-bold text-success mb-0">0%</p>
+            <div class="col-lg-3">
+                <div class="card-surface p-3">
+                    <h6 class="mb-3 fw-semibold">Top Scorers — <span id="rank-lang">{{ selected_lang }}</span></h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>WPM</th>
+                                    <th>Acc</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rankings-body">
+                                <tr>
+                                    <td colspan="3" class="text-muted small">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-            <button id="restart-btn" class="btn btn-primary px-4 py-2">Try Again</button>
-        </div>
-
-        <!-- Start Button -->
-        <div class="text-center mt-4">
-            <button id="start-btn" class="btn btn-primary px-5 py-2">Start Test</button>
         </div>
     </main>
 
@@ -170,6 +207,34 @@
     <script>
         lucide.createIcons();
 
+        // small toast helper (uses base showToast if available)
+        function showLocalToast(msg, type = 'info') {
+            if (window.showToast) return showToast(msg, type);
+            alert(msg);
+        }
+
+        async function loadRankings(lang) {
+            const tbody = document.getElementById('rankings-body');
+            document.getElementById('rank-lang').textContent = lang;
+            try {
+                const res = await fetch(`/rankings?lang=${encodeURIComponent(lang)}`);
+                const list = await res.json();
+                if (!list || !list.length) {
+                    tbody.innerHTML = '<tr><td colspan="3" class="text-muted small">No scores yet</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = list.map(r => `
+                    <tr>
+                        <td>${r.username}</td>
+                        <td><strong>${r.wpm}</strong></td>
+                        <td>${Math.round(r.accuracy)}%</td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="3" class="text-danger small">Unable to load rankings</td></tr>';
+            }
+        }
+
         const AFRICAN_WORDS = {
             am: ["ሰላም", "እንደምን", "እባክህ", "ጓደኛ", "ቤት", "ምግብ", "ውሃ", "መጽሐፍ"],
             bax: ["ɓa", "njə", "sə", "ŋgɔ", "lɛ", "ndə", "yà", "ŋka"],
@@ -178,12 +243,9 @@
             gez: ["ሰላም", "ልብ", "ቤት", "እምነት", "ሰማይ", "መልእክት", "ሰው", "ጽድቅ"]
         };
 
-        document.getElementById("language").addEventListener("change", (e) => {
-            const selectedLang = e.target.value;
-            window.location.href = `/?lang=${selectedLang}`;
-        });
+        // language change handled below (updates rankings and regenerate text)
 
-        let selectedLang = "{{ selected_lang }}";
+        let selectedLang = {{ selected_lang | tojson }};
         let isRunning = false;
         let correctChars = 0;
         let totalChars = 0;
@@ -197,7 +259,10 @@
         const resultCard = document.getElementById("result-card");
         const finalWpm = document.getElementById("final-wpm");
         const finalAccuracy = document.getElementById("final-accuracy");
+        const SERVER_CSRF = {{ csrf_token | tojson }};
+        const IS_AUTH = {{ is_authenticated | tojson }};
         const restartBtn = document.getElementById("restart-btn");
+
 
         function generateText() {
             const words = AFRICAN_WORDS[selectedLang];
@@ -225,7 +290,7 @@
             resultCard.classList.add("hidden");
         }
 
-        function stopTest() {
+        async function stopTest() {
             isRunning = false;
             textarea.disabled = true;
             startBtn.disabled = false;
@@ -238,6 +303,27 @@
             finalWpm.textContent = wpm;
             finalAccuracy.textContent = `${accuracy}%`;
             resultCard.classList.remove("hidden");
+
+            // If user is authenticated, send score to server
+            if (IS_AUTH) {
+                try {
+                    const resp = await fetch('/save-score', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ csrf_token: SERVER_CSRF, language: selectedLang, wpm: wpm, accuracy: accuracy })
+                    });
+                    const data = await resp.json();
+                    if (resp.ok) {
+                        showLocalToast('Score saved', 'success');
+                        loadRankings(selectedLang);
+                    } else {
+                        showLocalToast(data.error || 'Could not save score', 'danger');
+                    }
+                } catch (err) {
+                    console.error('failed to save score', err);
+                    showLocalToast('Failed to save score', 'danger');
+                }
+            }
         }
 
         textarea.addEventListener("input", (e) => {
@@ -292,6 +378,7 @@
         document.getElementById("language").addEventListener("change", (e) => {
             selectedLang = e.target.value;
             targetText = generateText();
+            loadRankings(selectedLang);
         });
 
         document.addEventListener("DOMContentLoaded", () => {
@@ -308,6 +395,8 @@
             } catch (err) {
                 console.error("Error initializing Afrim Input:", err);
             }
+            // initial rankings load
+            try { loadRankings(selectedLang); } catch (e) { }
         });
     </script>
 </body>

@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-center">
+    <div class="col-12 col-md-6 col-lg-4">
+        <div class="p-4 card-surface">
+            <h4 class="mb-3 fw-bold" style="color:var(--primary)">Create an account</h4>
+            <p class="text-muted small">Join LEWA to save your typing scores</p>
+
+            <form method="post" action="{{ url_for('routes.signup') }}" class="mt-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+                <div class="mb-3">
+                    <label class="form-label">Username</label>
+                    <input class="form-control" type="text" name="username" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input class="form-control" type="email" name="email" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input class="form-control" type="password" name="password" required>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div></div>
+                    <button class="btn btn-primary">Create account</button>
+                </div>
+            </form>
+
+            <div class="text-center mt-3 small text-muted">
+                Already have an account? <a href="{{ url_for('routes.login') }}">Sign in</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

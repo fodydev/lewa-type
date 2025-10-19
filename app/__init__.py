@@ -1,11 +1,13 @@
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
+from flask_jwt_extended import JWTManager
 from config import Config
 
 db = SQLAlchemy()
 login_manager = LoginManager()
 login_manager.login_view = 'routes.login'
+jwt = JWTManager()
 
 def create_app():
     app = Flask(__name__)
@@ -13,6 +15,7 @@ def create_app():
     
     db.init_app(app)
     login_manager.init_app(app)
+    jwt.init_app(app)
     
     from app import routes, models
     app.register_blueprint(routes.bp)
