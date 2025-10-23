@@ -9,7 +9,6 @@
     <style>
         :root {
             --primary: #0d6efd;
-            /* Bootstrap blue */
             --muted: #6b7280;
             --card-radius: 1rem;
         }
@@ -53,24 +52,39 @@
 
 <body class="d-flex flex-column min-vh-100">
 
-    <header class="site-header py-3">
-        <div class="container d-flex align-items-center justify-content-between">
-            <div class="d-flex align-items-center gap-3">
+<header class="site-header py-3">
+    <div class="container d-flex align-items-center justify-content-between">
+        <!-- LEFT: Auth buttons -->
+         <div class="d-flex align-items-center gap-3">
                 <div class="brand-mark">
                     <i data-lucide="keyboard" style="color:var(--primary)"></i>
                 </div>
-                <div>
-                    <h3 class="h6 mb-0 fw-semibold">LEWA</h3>
-                    <small class="text-muted">African Language Typing</small>
-                </div>
             </div>
 
-            <div>
-                <a href="/" class="btn btn-sm btn-outline-primary">Home</a>
-                <a href="/login" class="btn btn-sm btn-primary ms-2">Login</a>
-            </div>
+        <!-- CENTER: Navigation buttons -->
+        <div class="d-flex align-items-center gap-2 mx-auto">
+            <a href="/" class="btn btn-sm btn-outline-primary">Home</a>
+            <a href="/competitions" class="btn btn-sm btn-outline-primary">Competitions</a>
         </div>
-    </header>
+
+        <!-- RIGHT: empty for now, can add icons/buttons later -->
+         <div class="d-flex align-items-center gap-2">
+            <div>
+                    {% if is_authenticated or session.get('user_id') %}
+                    <form method="post" action="{{ url_for('routes.logout') }}" class="m-0 d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token or session.get('csrf_token') }}" />
+                        <button class="btn btn-sm btn-outline-danger ms-2" type="submit">Logout</button>
+                    </form>
+                    {% else %}
+                    <a href="{{ url_for('routes.signup') }}" class="btn btn-sm btn-outline-primary">Register</a>
+                    <a href="{{ url_for('routes.login') }}" class="btn btn-sm btn-primary ms-2">Login</a>
+                    {% endif %}
+                </div>
+        </div>
+        <div></div>
+    </div>
+</header>
+
 
     <main class="container my-5">
         {% block content %}{% endblock %}
@@ -84,36 +98,76 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="/static/js/index.js"></script>
     <script>
-        // Helper to show toasts
-        function showToast(message, type = 'info', timeout = 4000) {
+        // FIFO queued toasts helper
+        (function () {
             const container = document.getElementById('toast-container');
-            const toastEl = document.createElement('div');
-            toastEl.className = `toast align-items-center text-bg-${type} border-0 mb-2`;
-            toastEl.setAttribute('role', 'alert');
-            toastEl.setAttribute('aria-live', 'assertive');
-            toastEl.setAttribute('aria-atomic', 'true');
-            toastEl.innerHTML = `
-                <div class="d-flex">
-                    <div class="toast-body">${message}</div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-                </div>
-            `;
-            container.appendChild(toastEl);
-            const bsToast = new bootstrap.Toast(toastEl, { delay: timeout });
-            bsToast.show();
-            toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
-        }
+            const queues = { high: [], med: [], low: [] };
+            let processing = false;
 
-        // Flash messages from server: rendered as a JSON array in the template context
+            function _createToastEl(message, type) {
+                const toastEl = document.createElement('div');
+                toastEl.className = `toast align-items-center text-bg-${type} border-0 mb-2`;
+                toastEl.setAttribute('role', 'alert');
+                toastEl.setAttribute('aria-live', 'assertive');
+                toastEl.setAttribute('aria-atomic', 'true');
+                toastEl.innerHTML = `
+                    <div class="d-flex">
+                        <div class="toast-body">${message}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                `;
+                return toastEl;
+            }
+
+            function _dequeueItem() {
+                if (queues.high.length) return queues.high.shift();
+                if (queues.med.length) return queues.med.shift();
+                if (queues.low.length) return queues.low.shift();
+                return null;
+            }
+
+            function processQueue() {
+                if (processing) return;
+                const item = _dequeueItem();
+                if (!item) return;
+                processing = true;
+
+                const { message, type, timeout } = item;
+                const toastEl = _createToastEl(message, type);
+                container.appendChild(toastEl);
+                const bsToast = new bootstrap.Toast(toastEl, { delay: timeout, autohide: true });
+                toastEl.addEventListener('hidden.bs.toast', () => {
+                    toastEl.remove();
+                    processing = false;
+                    setTimeout(processQueue, 120);
+                });
+                bsToast.show();
+            }
+
+            window.showToast = function (message, type = 'info', timeout = null) {
+                const defaultTimeouts = { 'danger': 6000, 'warning': 5000, 'success': 3500, 'info': 3000 };
+                const _timeout = timeout == null ? (defaultTimeouts[type] || 3500) : timeout;
+                const bucket = (type === 'danger') ? 'high' : (type === 'warning') ? 'med' : 'low';
+                queues[bucket].push({ message, type, timeout: _timeout });
+                setTimeout(processQueue, 0);
+            };
+        })();
+
         document.addEventListener('DOMContentLoaded', () => {
             try { lucide.createIcons(); } catch (e) { }
             const flashes = JSON.parse('{{ get_flashed_messages(with_categories=true) | tojson | safe }}');
             if (flashes && flashes.length) {
+                const seen = new Map();
+                const map = { 'success': 'success', 'info': 'info', 'warning': 'warning', 'danger': 'danger' };
                 for (const [category, msg] of flashes) {
-                    // Map categories to toast types
-                    const map = { 'success': 'success', 'info': 'info', 'warning': 'warning', 'danger': 'danger' };
                     const t = map[category] || 'info';
+                    const key = `${t}:${msg}`;
+                    const now = Date.now();
+                    const last = seen.get(key) || 0;
+                    if (now - last < 1000) continue;
+                    seen.set(key, now);
                     showToast(msg, t);
                 }
             }

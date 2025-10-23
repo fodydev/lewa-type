@@ -1,0 +1,9 @@
+This folder contains Alembic migration scripts.
+
+The repository includes Flask-Migrate integration. To generate migrations locally run:
+
+    flask db init   # only once
+    flask db migrate -m "initial"
+    flask db upgrade
+
+In CI or on deployment, apply migrations with `flask db upgrade`.

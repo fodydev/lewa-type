@@ -1,9 +1,11 @@
-from flask import Blueprint, render_template, request, session, redirect, url_for, flash, make_response
+from flask import Blueprint, render_template, request, session, redirect, url_for, flash, make_response, Response, stream_with_context
 from app import db
 from app.models import User
 from flask_jwt_extended import create_access_token, unset_jwt_cookies, set_access_cookies
 import secrets
-from app.models import Score, User
+from app.models import Score, User, Competition, CompetitionParticipant, CompetitionInvite, CompetitionScore
+import json
+import time
 from flask import jsonify
 from datetime import datetime
 from flask_login import current_user
@@ -152,6 +154,279 @@ def save_score():
     db.session.commit()
 
     return jsonify({'ok': True, 'score_id': score.id, 'created_at': score.created_at.isoformat()}), 201
+
+
+@bp.route('/competitions', methods=['GET'])
+def competitions_page():
+    # render list page
+    csrf = _generate_csrf_token()
+    return render_template('competitions.html', languages=languages, csrf_token=csrf)
+
+
+@bp.route('/api/competitions')
+def api_competitions():
+    # Return public competitions plus those the user manages or participates in
+    user_id = session.get('user_id')
+    q = Competition.query.filter(Competition.is_public == True)
+    if user_id:
+        # include ones managed or joined
+        managed = Competition.query.filter(Competition.manager_id == user_id)
+        joined_ids = db.session.query(CompetitionParticipant.competition_id).filter(CompetitionParticipant.user_id == user_id).subquery()
+        joined = Competition.query.filter(Competition.id.in_(joined_ids))
+        q = q.union(managed, joined)
+
+    comps = q.order_by(Competition.created_at.desc()).all()
+    out = []
+    for c in comps:
+        out.append({'id': c.id, 'title': c.title, 'language': c.language, 'is_public': c.is_public})
+    return jsonify(out)
+
+
+@bp.route('/competitions/new')
+def create_competition_page():
+    if not (current_user.is_authenticated or session.get('user_id')):
+        flash('You must be logged in to create competitions', 'warning')
+        return redirect(url_for('routes.login'))
+    return render_template('competition_create.html', languages=languages, csrf_token=_generate_csrf_token())
+
+
+@bp.route('/competitions', methods=['POST'])
+def create_competition():
+    data = request.get_json() or {}
+    csrf = data.get('csrf_token')
+    if not csrf or csrf != session.get('csrf_token'):
+        return jsonify({'error': 'invalid_csrf'}), 400
+
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'not_authenticated'}), 401
+
+    title = (data.get('title') or '').strip()
+    lang_code = data.get('language')
+    is_public = bool(data.get('is_public'))
+    live_ranking = bool(data.get('live_ranking'))
+
+    if not title or not lang_code:
+        return jsonify({'error': 'missing_fields'}), 400
+
+    comp = Competition(title=title, language=lang_code, is_public=is_public, live_ranking=live_ranking, manager_id=user_id)
+    db.session.add(comp)
+    db.session.commit()
+
+    # add creator as participant
+    part = CompetitionParticipant(competition_id=comp.id, user_id=user_id)
+    db.session.add(part)
+    db.session.commit()
+
+    return jsonify({'ok': True, 'competition_id': comp.id}), 201
+
+
+@bp.route('/competitions/<int:comp_id>/manage')
+def manage_competition_page(comp_id):
+    comp = Competition.query.get_or_404(comp_id)
+    user_id = session.get('user_id')
+    if not user_id or comp.manager_id != user_id:
+        flash('You do not have permission to manage this competition', 'danger')
+        return redirect(url_for('routes.competitions_page'))
+    return render_template('competition_manage.html', comp_id=comp.id, csrf_token=_generate_csrf_token())
+
+
+@bp.route('/competitions/<int:comp_id>/play')
+def play_competition(comp_id):
+    comp = Competition.query.get_or_404(comp_id)
+    user_id = session.get('user_id')
+    # if competition is private, require the user to be a participant or manager
+    if not comp.is_public:
+        if not user_id:
+            flash('You must be logged in to join this competition', 'warning')
+            return redirect(url_for('routes.login'))
+        participant = CompetitionParticipant.query.filter_by(competition_id=comp.id, user_id=user_id).first()
+        if not participant and comp.manager_id != user_id:
+            flash('You must join this competition to play', 'warning')
+            return redirect(url_for('routes.competitions_page'))
+
+    # render play interface (typing area + live rankings)
+    is_auth = bool(current_user.is_authenticated or session.get('user_id'))
+    return render_template('competition_play.html', comp_id=comp.id, title=comp.title, language=comp.language, csrf_token=_generate_csrf_token(), is_authenticated=is_auth)
+
+
+@bp.route('/api/competitions/<int:comp_id>/participants')
+def api_competition_participants(comp_id):
+    parts = (db.session.query(CompetitionParticipant, User.username)
+             .join(User, User.id == CompetitionParticipant.user_id)
+             .filter(CompetitionParticipant.competition_id == comp_id)
+             .order_by(CompetitionParticipant.joined_at.asc())
+             .all())
+    out = []
+    for p, username in parts:
+        out.append({'id': p.user_id, 'username': username})
+    return jsonify(out)
+
+
+@bp.route('/competitions/<int:comp_id>/invite', methods=['POST'])
+def create_invite(comp_id):
+    comp = Competition.query.get_or_404(comp_id)
+    user_id = session.get('user_id')
+    if not user_id or comp.manager_id != user_id:
+        return jsonify({'error': 'forbidden'}), 403
+
+    data = request.get_json() or {}
+    csrf = data.get('csrf_token')
+    if not csrf or csrf != session.get('csrf_token'):
+        return jsonify({'error': 'invalid_csrf'}), 400
+
+    token = secrets.token_urlsafe(8)
+    invite = CompetitionInvite(competition_id=comp.id, token=token, invited_by=user_id)
+    db.session.add(invite)
+    db.session.commit()
+    return jsonify({'ok': True, 'invite_token': token})
+
+
+@bp.route('/competitions/join', methods=['POST'])
+def join_by_invite():
+    data = request.get_json() or {}
+    csrf = data.get('csrf_token')
+    if not csrf or csrf != session.get('csrf_token'):
+        return jsonify({'error': 'invalid_csrf'}), 400
+
+    token = (data.get('token') or '').strip()
+    if not token:
+        return jsonify({'error': 'missing_token'}), 400
+    invite = CompetitionInvite.query.filter_by(token=token).first()
+    if not invite or not invite.is_valid():
+        return jsonify({'error': 'invalid_invite'}), 400
+
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'not_authenticated'}), 401
+
+    # already participant?
+    exists = CompetitionParticipant.query.filter_by(competition_id=invite.competition_id, user_id=user_id).first()
+    if exists:
+        return jsonify({'ok': True, 'message': 'already_joined'})
+
+    part = CompetitionParticipant(competition_id=invite.competition_id, user_id=user_id)
+    invite.used = True
+    db.session.add(part)
+    db.session.add(invite)
+    db.session.commit()
+    return jsonify({'ok': True, 'competition_id': invite.competition_id})
+
+
+@bp.route('/competitions/<int:comp_id>/submit-score', methods=['POST'])
+def submit_competition_score(comp_id):
+    data = request.get_json() or {}
+    csrf = data.get('csrf_token')
+    if not csrf or csrf != session.get('csrf_token'):
+        return jsonify({'error': 'invalid_csrf'}), 400
+
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'not_authenticated'}), 401
+
+    # check participant
+    comp = Competition.query.get_or_404(comp_id)
+    participant = CompetitionParticipant.query.filter_by(competition_id=comp.id, user_id=user_id).first()
+    print(participant)
+    if not participant:
+        return jsonify({'error': 'not_participant'}), 403
+
+    try:
+        wpm = int(data.get('wpm'))
+        accuracy = float(data.get('accuracy'))
+    except Exception:
+        return jsonify({'error': 'invalid_data'}), 400
+
+    cs = CompetitionScore(competition_id=comp.id, user_id=user_id, wpm=wpm, accuracy=accuracy)
+    db.session.add(cs)
+    db.session.commit()
+    return jsonify({'ok': True, 'score_id': cs.id}), 201
+
+
+def _competition_rankings_snapshot(comp_id, limit=50):
+    # simple: get latest score per user ordered by wpm, accuracy
+    rows = (
+        CompetitionScore.query
+        .filter_by(competition_id=comp_id)
+        .order_by(CompetitionScore.wpm.desc(), CompetitionScore.accuracy.desc())
+        .limit(limit)
+        .all()
+    )
+
+    out = []
+    for s in rows:
+        user = User.query.get(s.user_id)
+        out.append({
+            'user_id': s.user_id,
+            'username': user.username if user else f'User {s.user_id}',
+            'wpm': s.wpm,
+            'accuracy': s.accuracy
+        })
+
+    return out
+
+
+@bp.route('/competitions/<int:comp_id>/rankings')
+def api_competition_rankings(comp_id):
+    data = _competition_rankings_snapshot(comp_id, limit=100)
+    return jsonify(data)
+
+
+@bp.route('/competitions/<int:comp_id>/live')
+def competitions_live(comp_id):
+    comp = Competition.query.get_or_404(comp_id)
+
+    def gen():
+        try:
+            while True:
+                snapshot = _competition_rankings_snapshot(comp_id, limit=50)
+                payload = {'rankings': snapshot}
+                yield f"data: {json.dumps(payload)}\n\n"
+                time.sleep(3)
+        except GeneratorExit:
+            return
+
+    return Response(stream_with_context(gen()), mimetype='text/event-stream')
+
+
+@bp.route('/competitions/<int:comp_id>/remove-user', methods=['POST'])
+def remove_user_from_competition(comp_id):
+    comp = Competition.query.get_or_404(comp_id)
+    user_id = session.get('user_id')
+    if not user_id or comp.manager_id != user_id:
+        return jsonify({'error': 'forbidden'}), 403
+
+    data = request.get_json() or {}
+    csrf = data.get('csrf_token')
+    if not csrf or csrf != session.get('csrf_token'):
+        return jsonify({'error': 'invalid_csrf'}), 400
+
+    remove_id = data.get('user_id')
+    if not remove_id:
+        return jsonify({'error': 'missing_user'}), 400
+
+    part = CompetitionParticipant.query.filter_by(competition_id=comp.id, user_id=remove_id).first()
+    if not part:
+        return jsonify({'error': 'not_found'}), 404
+    db.session.delete(part)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@bp.route('/competitions/<int:comp_id>/delete', methods=['POST'])
+def delete_competition(comp_id):
+    comp = Competition.query.get_or_404(comp_id)
+    user_id = session.get('user_id')
+    if not user_id or comp.manager_id != user_id:
+        return jsonify({'error': 'forbidden'}), 403
+
+    csrf = request.form.get('csrf_token') or (request.get_json() or {}).get('csrf_token')
+    if not csrf or csrf != session.get('csrf_token'):
+        return jsonify({'error': 'invalid_csrf'}), 400
+
+    db.session.delete(comp)
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 

@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>Competitions</h3>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('routes.create_competition_page') }}" class="btn btn-primary">Create Competition</a>
+    <button id="show-join" class="btn btn-outline-secondary">Join by Invite</button>
+  </div>
+</div>
+
+<div id="competitions-list">
+    <p class="text-muted">Loading...</p>
+</div>
+
+<div id="join-box" class="card p-3 mt-3" style="display:none; max-width:480px;">
+  <h6>Join Competition</h6>
+  <div class="input-group">
+    <input id="invite-token" class="form-control" placeholder="Enter invite token" />
+    <button id="join-btn" class="btn btn-primary">Join</button>
+  </div>
+  <div id="join-feedback" class="mt-2 small text-muted"></div>
+</div>
+
+<script>
+    fetch('/api/competitions').then(r => r.json()).then(list => {
+        const el = document.getElementById('competitions-list');
+        if (!list || list.length === 0) {
+            el.innerHTML = '<p class="text-muted">No competitions yet.</p>';
+            return;
+        }
+    el.innerHTML = list.map(c => `
+    <div class="card p-3 mb-2">
+      <div class="d-flex justify-content-between">
+        <div>
+          <h5 class="mb-1">${c.title}</h5>
+          <small class="text-muted">${c.language} — ${c.is_public ? 'Public' : 'Private'}</small>
+        </div>
+        <div>
+      <a href="/competitions/${c.id}/play" class="btn btn-sm btn-outline-success me-2">Play</a>
+      <a href="/competitions/${c.id}/manage" class="btn btn-sm btn-outline-primary">Manage</a>
+        </div>
+      </div>
+    </div>
+  `).join('');
+    });
+</script>
+
+<script>
+  document.getElementById('show-join').addEventListener('click', () => {
+    const box = document.getElementById('join-box');
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  });
+
+  document.getElementById('join-btn').addEventListener('click', async () => {
+    const token = document.getElementById('invite-token').value.trim();
+    const feedback = document.getElementById('join-feedback');
+    feedback.className = 'mt-2 small text-muted';
+    if (!token) {
+      feedback.textContent = 'Please enter a token.';
+      return;
+    }
+    try {
+      const res = await fetch('/competitions/join', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csrf_token: '{{ csrf_token }}', token })
+      });
+      const j = await res.json();
+      if (res.ok) {
+        feedback.className = 'mt-2 small text-success';
+        feedback.textContent = 'Joined competition.';
+        // redirect to management if manager or to play page
+        if (j.competition_id) window.location.href = `/competitions/${j.competition_id}/play`;
+      } else {
+        feedback.className = 'mt-2 small text-danger';
+        feedback.textContent = j.error || 'Failed to join';
+      }
+    } catch (err) {
+      feedback.className = 'mt-2 small text-danger';
+      feedback.textContent = 'Network error';
+    }
+  });
+</script>
+{% endblock %}

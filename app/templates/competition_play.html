@@ -1,0 +1,316 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<!------------------------------------------------
+ Competition Play Page - Updated with SSE + fallback
+-------------------------------------------------->
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 id="comp-title">Competition: {{ title }}</h3>
+  <div>
+    <a id="rank-link" class="btn btn-outline-primary" href="#">View Rankings</a>
+  </div>
+</div>
+
+<main class="row">
+  <div class="col-lg-9">
+    <!-- Target Text -->
+    <div class="bg-light border rounded-4 p-4 mb-4">
+      <p class="text-muted small mb-2">Type this (competition):</p>
+      <p id="target-text" class="font-monospace fs-5 text-dark"></p>
+    </div>
+
+    <!-- Typing Area -->
+    <div class="bg-white border rounded-4 p-4 position-relative mb-4">
+      <div id="download-status" hidden class="text-primary small mb-2">Loading Afrim Input...</div>
+      <textarea id="textfield" rows="6" class="font-monospace fs-6"
+        placeholder="Click here and start typing to begin the test..."></textarea>
+
+      <div id="tooltip" class="position-absolute bg-white border rounded shadow-sm p-2 small d-none">
+        <div id="tooltip-input" class="fw-medium mb-1"></div>
+        <div id="tooltip-predicates"></div>
+      </div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-6">
+        <div class="metric-card">
+          <div class="metric-icon">
+            <i data-lucide="zap" class="text-primary"></i>
+          </div>
+          <div id="wpm" class="fs-2 fw-bold">0</div>
+          <p class="text-muted small mb-0">Words Per Minute</p>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="metric-card">
+          <div class="metric-icon">
+            <i data-lucide="target" class="text-primary"></i>
+          </div>
+          <div id="accuracy" class="fs-2 fw-bold">100%</div>
+          <p class="text-muted small mb-0">Accuracy</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result Card -->
+    <div id="result-card" class="hidden text-center bg-white border rounded-4 p-4 shadow-sm">
+      <h3 class="fw-bold mb-2">Test Complete!</h3>
+      <p class="text-muted mb-4">Here are your results:</p>
+      <div class="d-flex justify-content-center gap-5 mb-4">
+        <div>
+          <p class="small text-muted mb-1">WPM</p>
+          <p id="final-wpm" class="fs-3 fw-bold text-primary mb-0">0</p>
+        </div>
+        <div>
+          <p class="small text-muted mb-1">Accuracy</p>
+          <p id="final-accuracy" class="fs-3 fw-bold text-success mb-0">0%</p>
+        </div>
+      </div>
+      <button id="restart-btn" class="btn btn-primary px-4 py-2">Try Again</button>
+    </div>
+
+    <!-- Start Button -->
+    <div class="text-center mt-4">
+      <button id="start-btn" class="btn btn-primary px-5 py-2">Start Test</button>
+    </div>
+  </div>
+
+  <!-- Live Rankings Sidebar -->
+  <div class="col-lg-3">
+    <div class="card-surface p-3">
+      <h6 class="mb-3 fw-semibold">🏆 Live Rankings</h6>
+      <div id="live-list" class="small text-muted">Connecting...</div>
+    </div>
+  </div>
+</main>
+
+<!-- Competition Meta -->
+<div id="comp-meta"
+     data-comp-id="{{ comp_id }}"
+     data-csrf="{{ csrf_token }}"
+     data-auth="{{ 1 if is_authenticated else 0 }}"
+     data-lang="{{ language }}"
+     hidden></div>
+
+<!-- Required Libs -->
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/afrim-input@latest/dist/afrim_input.js"></script>
+
+<style>
+  textarea {
+    resize: none;
+    border: none;
+    outline: none;
+    background: transparent;
+    width: 100%;
+  }
+  #result-card { transition: opacity .35s, transform .3s; }
+  #result-card.hidden { opacity: 0; transform: translateY(18px); pointer-events: none; }
+  .metric-card { background:#fff;border:1px solid #e5e7eb;border-radius:1rem;padding:1.25rem;text-align:center; }
+  .metric-icon { width:3rem;height:3rem;margin:0 auto .5rem;border-radius:50%;background:#eef2ff;display:flex;align-items:center;justify-content:center; }
+</style>
+
+<script>
+lucide.createIcons();
+
+// --- Meta ---
+const meta = document.getElementById('comp-meta').dataset;
+const compId = Number(meta.compId);
+const SERVER_CSRF = meta.csrf;
+const IS_AUTH = meta.auth === '1';
+let selectedLang = meta.lang || 'gez';
+console.log(selectedLang)
+
+// --- Word sets ---
+const AFRICAN_WORDS = {
+  am: ["ሰላም","እንደምን","እባክህ","ጓደኛ","ቤት","ምግብ","ውሃ","መጽሐፍ"],
+  bax: ["ɓa","njə","sə","ŋgɔ","lɛ","ndə","yà","ŋka"],
+  ewo: ["ndə","mɛ","lɔ́","sɔ","bɛ́","nda","bɔ́","ngwɛ́"],
+  fmp: ["m̀bʉ̀","tsə́","ŋgá","shwì","mbwɔ́","ndzə̀","yɔ́","ŋwə́"],
+  gez: ["ሰላም","ልብ","ቤት","እምነት","ሰማይ","መልእክት","ሰው","ጽድቅ"]
+};
+
+// --- Elements ---
+const targetEl = document.getElementById('target-text');
+const textarea = document.getElementById('textfield');
+const startBtn = document.getElementById('start-btn');
+const wpmDisplay = document.getElementById('wpm');
+const accuracyDisplay = document.getElementById('accuracy');
+const resultCard = document.getElementById('result-card');
+const finalWpm = document.getElementById('final-wpm');
+const finalAccuracy = document.getElementById('final-accuracy');
+const restartBtn = document.getElementById('restart-btn');
+const downloadStatus = document.getElementById('download-status');
+const liveListEl = document.getElementById('live-list');
+
+// --- State ---
+let isRunning = false;
+let correctChars = 0;
+let totalChars = 0;
+let startTime = null;
+let targetText = '';
+
+// --- Helpers ---
+function generateText() {
+  const words = AFRICAN_WORDS[selectedLang] || AFRICAN_WORDS['gez'];
+  const shuffled = [...words].sort(() => Math.random() - 0.5);
+  const sentence = shuffled.slice(0, 10).join(' ');
+  targetEl.innerHTML = sentence.split('').map(ch => `<span>${ch}</span>`).join('');
+  targetText = sentence;
+}
+
+function resetUIForStart() {
+  correctChars = 0;
+  totalChars = 0;
+  wpmDisplay.textContent = '0';
+  accuracyDisplay.textContent = '100%';
+  resultCard.classList.add('hidden');
+}
+
+function startTyping() {
+  if (isRunning) return;
+  isRunning = true;
+  startBtn.disabled = true;
+  textarea.readOnly = false;
+  textarea.value = '';
+  textarea.focus();
+  startTime = new Date();
+  resetUIForStart();
+}
+
+async function stopTest() {
+  if (!startTime) return;
+  isRunning = false;
+  startBtn.disabled = false;
+  textarea.readOnly = true;
+
+  const elapsedMin = (new Date() - startTime) / 1000 / 60;
+  const wordsTyped = textarea.value.trim().split(/\s+/).length || 0;
+  const wpm = elapsedMin > 0 ? Math.round(wordsTyped / elapsedMin) : 0;
+  const accuracy = totalChars > 0 ? Math.round((correctChars / totalChars) * 100) : 100;
+
+  finalWpm.textContent = wpm;
+  finalAccuracy.textContent = `${accuracy}%`;
+  resultCard.classList.remove('hidden');
+  resultCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  if (IS_AUTH) {
+    try {
+      const resp = await fetch(`/competitions/${compId}/submit-score`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csrf_token: SERVER_CSRF, wpm, accuracy })
+      });
+      if (resp.ok) {
+        console.log('Score submitted successfully');
+      }
+    } catch (err) {
+      console.error('Failed to submit score:', err);
+    }
+  }
+}
+
+// --- Input tracking ---
+textarea.addEventListener('input', (e) => {
+  if (!isRunning && e.target.value.trim().length > 0) startTyping();
+  const value = e.target.value;
+  totalChars = value.length;
+
+  const spans = targetEl.querySelectorAll('span');
+  correctChars = 0;
+  spans.forEach((span, i) => {
+    const typed = value[i];
+    if (!typed) span.className = '';
+    else if (typed === span.textContent) {
+      span.className = 'text-success';
+      correctChars++;
+    } else span.className = 'text-danger';
+  });
+
+  if (value.length >= targetText.length) return stopTest();
+
+  const elapsedMin = startTime ? (new Date() - startTime) / 1000 / 60 : 0;
+  const wordsSoFar = value.trim().split(/\s+/).length || 0;
+  const wpm = elapsedMin > 0 ? Math.round(wordsSoFar / elapsedMin) : 0;
+  const accuracy = totalChars > 0 ? Math.round((correctChars / totalChars) * 100) : 100;
+  wpmDisplay.textContent = wpm;
+  accuracyDisplay.textContent = `${accuracy}%`;
+});
+
+startBtn.addEventListener('click', () => {
+  generateText();
+  resetUIForStart();
+  startTyping();
+});
+
+restartBtn.addEventListener('click', () => {
+  generateText();
+  textarea.value = '';
+  textarea.readOnly = false;
+  startTyping();
+});
+
+// --- LIVE RANKINGS (SSE + fallback) ---
+function renderRankings(list) {
+  if (!Array.isArray(list) || list.length === 0) {
+    liveListEl.innerHTML = '<div class="text-muted small">No scores yet</div>';
+    return;
+  }
+  liveListEl.innerHTML = list.map(
+    (r, idx) => `<div><strong>${idx + 1}. ${r.username}</strong> — ${r.wpm} WPM (${Math.round(r.accuracy)}%)</div>`
+  ).join('');
+}
+
+async function fallbackRankings() {
+  try {
+    const res = await fetch(`/competitions/${compId}/rankings`);
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    renderRankings(data);
+  } catch (err) {
+    liveListEl.innerHTML = '<div class="text-danger small">Unable to load rankings</div>';
+  }
+}
+
+function connectSSE() {
+  const source = new EventSource(`/competitions/${compId}/live`);
+  source.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      renderRankings(data.rankings);
+    } catch {
+      console.warn('Invalid SSE data');
+    }
+  };
+  source.onerror = () => {
+    console.warn('SSE disconnected, fallback started');
+    source.close();
+    setInterval(fallbackRankings, 5000);
+  };
+  window.competitionSSE = source;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  generateText();
+  connectSSE();
+
+  try {
+    downloadStatus.hidden = false;
+    const af = new AfrimInput({
+      textFieldElementID: 'textfield',
+      downloadStatusElementID: 'download-status',
+      tooltipElementID: 'tooltip',
+      tooltipInputElementID: 'tooltip-input',
+      tooltipPredicatesElementID: 'tooltip-predicates',
+      configUrl: `https://raw.githubusercontent.com/fodydev/afrim-data/4b177197bb37c9742cd90627b1ad543c32ec791b/${selectedLang}/${selectedLang}.toml`,
+    });
+    setTimeout(() => { downloadStatus.hidden = true; }, 600);
+    console.log('Afrim Input initialized', af);
+  } catch (err) {
+    console.error('AfrimInput init failed', err);
+    downloadStatus.hidden = true;
+  }
+});
+</script>
+{% endblock %}
