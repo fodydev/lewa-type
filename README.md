@@ -142,10 +142,3 @@ API/Non-Page Routes
 *   **Delete Comp**: /competitions//delete (POST) – Delete competition (manager).
     
 *   **Global Rankings**: /rankings (GET) – JSON top 10 scores by language.
-
-
-# Preview
-![Alt Home](preview_images/home_page.png)
-![Alt Registration](preview_images/registration_page.png)
-![Alt Competitions](preview_images/competitions_page.png)
-![Alt Typing Competitions](preview_images/typing_competition.png)
