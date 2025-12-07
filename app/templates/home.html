@@ -89,6 +89,7 @@
                 </select>
 
                 {% if is_authenticated %}
+                <a href="/competitions" class="btn btn-sm btn-outline-primary">Competitions</a>
                 <form method="post" action="{{ url_for('routes.logout') }}" class="m-0">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
                     <button class="btn btn-sm btn-outline-danger" type="submit">Logout</button>

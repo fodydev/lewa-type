@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h3>Create Competition</h3>
+<form id="create-form">
+    <div class="mb-3">
+        <label class="form-label">Title</label>
+        <input name="title" class="form-control" />
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Language</label>
+        <select name="language" class="form-select">
+            {% for code,name in languages.items() %}
+            <option value="{{ code }}">{{ name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3 form-check">
+        <input type="checkbox" name="is_public" class="form-check-input" checked />
+        <label class="form-check-label">Public</label>
+    </div>
+    <div class="mb-3 form-check">
+        <input type="checkbox" name="live_ranking" class="form-check-input" checked />
+        <label class="form-check-label">Live Ranking</label>
+    </div>
+    <button class="btn btn-primary">Create</button>
+</form>
+
+<script>
+    const form = document.getElementById('create-form');
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const data = Object.fromEntries(new FormData(form));
+        data.csrf_token = '{{ csrf_token }}';
+        const res = await fetch('/competitions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+        const json = await res.json();
+        if (res.ok) {
+            window.location.href = `/competitions/${json.competition_id}/manage`;
+        } else {
+            alert(json.error || 'Failed');
+        }
+    });
+</script>
+{% endblock %}

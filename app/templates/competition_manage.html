@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 id="comp-title">Competition</h3>
+    <div>
+        <button id="invite-btn" class="btn btn-outline-primary">Create Invite</button>
+        <a id="rank-link" class="btn btn-primary" href="#">View Rankings</a>
+    </div>
+</div>
+
+<div id="participants" class="mb-3">
+    <p class="text-muted">Loading participants...</p>
+</div>
+
+<div id="rankings" class="mb-3 card p-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0">Live Rankings</h5>
+        <div id="invite-container" style="display:none">
+            <small class="text-muted">Invite:</small>
+            <code id="invite-token" class="ms-2"></code>
+            <button id="copy-invite" class="btn btn-sm btn-outline-secondary ms-2">Copy</button>
+        </div>
+    </div>
+    <div id="live-list">Connecting...</div>
+</div>
+
+<script>
+    const compId = {{ comp_id | tojson }};
+    async function loadParticipants() {
+        const res = await fetch(`/api/competitions/${compId}/participants`);
+        const list = await res.json();
+        const el = document.getElementById('participants');
+        if (!list || list.length === 0) el.innerHTML = '<p class="text-muted">No participants</p>';
+        else el.innerHTML = list.map(p => `<div>${p.username}</div>`).join('');
+    }
+    loadParticipants();
+
+    // initial rankings fetch (so page doesn't wait for first SSE message)
+    async function fetchInitialRankings() {
+        try {
+            const res = await fetch(`/competitions/${compId}/rankings`);
+            const data = await res.json();
+            renderRankings(data || []);
+        } catch (err) {
+            console.error('failed to fetch initial rankings', err);
+            document.getElementById('live-list').innerHTML = '<div class="text-muted small">Unable to load rankings</div>';
+        }
+    }
+
+    function renderRankings(list) {
+        const el = document.getElementById('live-list');
+        if (!list || list.length === 0) {
+            el.innerHTML = '<div class="text-muted small">No scores yet</div>';
+            return;
+        }
+        el.innerHTML = list.map((r, idx) => `
+            <div class="d-flex justify-content-between align-items-center py-1">
+                <div><strong>${r.username}</strong></div>
+                <div class="text-end small text-muted">${r.wpm} wpm — ${Math.round(r.accuracy)}%</div>
+            </div>
+        `).join('');
+    }
+    // call initial fetch
+    fetchInitialRankings();
+
+    // invite
+    document.getElementById('invite-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('invite-btn');
+        btn.disabled = true;
+        btn.textContent = 'Creating...';
+        try {
+            const res = await fetch(`/competitions/${compId}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csrf_token: '{{ csrf_token }}' }) });
+            const j = await res.json();
+            if (res.ok) {
+                const container = document.getElementById('invite-container');
+                const tokenEl = document.getElementById('invite-token');
+                tokenEl.textContent = j.invite_token;
+                container.style.display = 'inline-flex';
+                showToast('Invite created', 'success');
+            } else {
+                showToast(j.error || 'Could not create invite', 'danger');
+            }
+        } catch (err) {
+            console.error('invite error', err);
+            showToast('Failed to create invite', 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Create Invite';
+        }
+    });
+
+    // copy invite
+    document.getElementById('copy-invite').addEventListener('click', (e) => {
+        const token = document.getElementById('invite-token').textContent;
+        if (!token) return;
+        navigator.clipboard?.writeText(token).then(() => showToast('Invite token copied', 'success')).catch(() => showToast('Copy failed', 'warning'));
+    });
+
+    // SSE connect
+    const es = connectCompetitionSSE(compId, (data) => {
+        const list = data.rankings || [];
+        const el = document.getElementById('live-list');
+        el.innerHTML = list.map(r => `<div><strong>${r.username}</strong> — ${r.wpm}wpm (${Math.round(r.accuracy)}%)</div>`).join('');
+    });
+
+    window.addEventListener('beforeunload', () => es.close());
+</script>
+{% endblock %}
