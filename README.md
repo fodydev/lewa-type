@@ -1,6 +1,14 @@
 # lewa-type
 A platform to learn the typing using african writing systems.
 
+<img width="1916" height="931" alt="image" src="https://github.com/user-attachments/assets/6e05d3d3-76c1-4b43-8260-4d1c77bbb30d" />
+
+## Features
+
+- Authentication
+- Competition with leaderboards
+- Integrated input method engines
+
 ## Installation & Setup
 
 1. **Clone the repository**
@@ -29,116 +37,3 @@ pip install -r requirements.txt
 python init_db.py
 flask run
 ```
-Main Pages
---------------------
-1.  **Home**
-    
-    *   **Route**: /
-        
-    *   **Purpose**: Select language and access typing practice.
-        
-    *   **Access**: Public.
-        
-    *   **Template**: home.html
-        
-    *   **Features**: Language dropdown, session persistence, auth status.
-        
-2.  **Login**
-    
-    *   **Route**: /login (GET/POST)
-        
-    *   **Purpose**: User login with username/email and password.
-        
-    *   **Access**: Public (redirects if authenticated).
-        
-    *   **Template**: login.html
-        
-    *   **Features**: Auth check, JWT on success.
-        
-3.  **Signup**
-    
-    *   **Route**: /signup (GET/POST)
-        
-    *   **Purpose**: Create new account (username, email, password).
-        
-    *   **Access**: Public (redirects if authenticated).
-        
-    *   **Template**: signup.html
-        
-    *   **Features**: Uniqueness check, auto-login on success.
-        
-4.  **Competitions List**
-    
-    *   **Route**: /competitions (GET)
-        
-    *   **Purpose**: View available competitions.
-        
-    *   **Access**: Public.
-        
-    *   **Template**: competitions.html
-        
-    *   **Features**: Lists public/user-specific comps.
-        
-5.  **Create Competition**
-    
-    *   **Route**: /competitions/new (GET)
-        
-    *   **Purpose**: Form to create new competition.
-        
-    *   **Access**: Authenticated users.
-        
-    *   **Template**: competition\_create.html
-        
-    *   **Features**: Set title, language, public/private, live rankings.
-        
-6.  **Manage Competition**
-    
-    *   **Route**: /competitions//manage (GET)
-        
-    *   **Purpose**: Manage specific competition (invites, remove users).
-        
-    *   **Access**: Manager only.
-        
-    *   **Template**: competition\_manage.html
-        
-    *   **Features**: Restricted to creator.
-        
-7.  **Play Competition**
-    
-    *   **Route**: /competitions//play (GET)
-        
-    *   **Purpose**: Typing interface with live rankings.
-        
-    *   **Access**: Public for public comps; authenticated participant/manager for private.
-        
-    *   **Template**: competition\_play.html
-        
-    *   **Features**: Displays title/language, typing area.
-        
-
-API/Non-Page Routes
--------------------
-
-*   **Logout**: /logout (POST) – Clears session/JWT.
-    
-*   **Save Score**: /save-score (POST) – Saves WPM/accuracy (authenticated).
-    
-*   **API Competitions**: /api/competitions (GET) – JSON list of accessible comps.
-    
-*   **Participants**: /api/competitions//participants (GET) – JSON participant list.
-    
-*   **Invite**: /competitions//invite (POST) – Generate invite token (manager).
-    
-*   **Join**: /competitions/join (POST) – Join via token (authenticated).
-    
-*   **Submit Score**: /competitions//submit-score (POST) – Submit comp score (participant).
-    
-*   **Rankings**: /competitions//rankings (GET) – JSON rankings.
-    
-*   **Live Rankings**: /competitions//live (GET) – SSE stream of updates.
-    
-*   **Remove User**: /competitions//remove-user (POST) – Remove participant (manager).
-    
-*   **Delete Comp**: /competitions//delete (POST) – Delete competition (manager).
-    
-*   **Global Rankings**: /rankings (GET) – JSON top 10 scores by language.
